@@ -1,0 +1,1178 @@
+UI.Separator()
+
+UI.Label("Mana & health potions/runes")
+
+if type(storage.hpitem1) ~= "table" then
+  storage.hpitem1 = {on=false, title="HP%", item=266, min=51, max=90}
+end
+if type(storage.hpitem2) ~= "table" then
+  storage.hpitem2 = {on=false, title="HP%", item=3160, min=0, max=50}
+end
+if type(storage.manaitem1) ~= "table" then
+  storage.manaitem1 = {on=false, title="MP%", item=268, min=51, max=90}
+end
+if type(storage.manaitem2) ~= "table" then
+  storage.manaitem2 = {on=false, title="MP%", item=3157, min=0, max=50}
+end
+
+for i, healingInfo in ipairs({storage.hpitem1, storage.hpitem2, storage.manaitem1, storage.manaitem2}) do
+  local healingmacro = macro(20, function()
+    local hp = i <= 2 and player:getHealthPercent() or math.min(100, math.floor(100 * (player:getMana() / player:getMaxMana())))
+    if healingInfo.max >= hp and hp >= healingInfo.min then
+      if TargetBot then 
+        TargetBot.useItem(healingInfo.item, healingInfo.subType, player) -- sync spell with targetbot if available
+      else
+        local thing = g_things.getThingType(healingInfo.item)
+        local subType = g_game.getClientVersion() >= 860 and 0 or 1
+        if thing and thing:isFluidContainer() then
+          subType = healingInfo.subType
+        end
+        g_game.useInventoryItemWith(healingInfo.item, player, subType)
+      end
+    end
+  end)
+  healingmacro.setOn(healingInfo.on)
+
+  UI.DualScrollItemPanel(healingInfo, function(widget, newParams) 
+    healingInfo = newParams
+    healingmacro.setOn(healingInfo.on and healingInfo.item > 100)
+  end)
+end
+
+if g_game.getClientVersion() < 780 then
+  UI.Label("In old tibia potions & runes work only when you have backpack with them opened")
+end
+
+UI.Separator()
+
+
+UI.Label("Curar spells")
+
+if type(storage.healing1) ~= "table" then
+  storage.healing1 = {on=false, title="HP%", text="exura", min=51, max=90}
+end
+if type(storage.healing2) ~= "table" then
+  storage.healing2 = {on=false, title="HP%", text="exura vita", min=0, max=50}
+end
+
+-- create 2 healing widgets
+for _, healingInfo in ipairs({storage.healing1, storage.healing2}) do
+  local healingmacro = macro(20, function()
+    local hp = player:getHealthPercent()
+    if healingInfo.max >= hp and hp >= healingInfo.min then
+      if TargetBot then 
+        TargetBot.saySpell(healingInfo.text) -- sync spell with targetbot if available
+      else
+        say(healingInfo.text)
+      end
+    end
+  end)
+  healingmacro.setOn(healingInfo.on)
+
+  UI.DualScrollPanel(healingInfo, function(widget, newParams) 
+    healingInfo = newParams
+    healingmacro.setOn(healingInfo.on)
+  end)
+end
+
+
+-- Variables para cooldowns
+local lastCastTimes = {
+  ["exori gran ico"] = 0,
+  ["exori min"] = 0,
+  ["exori"] = 0,
+  ["exori ico"] = 0,
+  ["exori hur"] = 0
+}
+
+local spellCooldowns = {
+  ["exori gran ico"] = 15000,
+  ["exori min"] = 4000,
+  ["exori"] = 3000,
+  ["exori ico"] = 2000,
+  ["exori hur"] = 4000
+}
+
+-- Función para verificar cooldowns por spell
+local function canCast(spell)
+  return now - lastCastTimes[spell] >= spellCooldowns[spell]
+end
+
+-- Función para lanzar spell y registrar cooldown
+local function cast(spell)
+  say(spell)
+  lastCastTimes[spell] = now
+end
+
+-- Función para obtener posición al frente
+local function getFrontPos(player)
+  local dir = player:getDirection()
+  local pos = player:getPosition()
+  local frontPos = {x = pos.x, y = pos.y, z = pos.z}
+
+  if dir == North then
+    frontPos.y = frontPos.y - 1
+  elseif dir == East then
+    frontPos.x = frontPos.x + 1
+  elseif dir == South then
+    frontPos.y = frontPos.y + 1
+  elseif dir == West then
+    frontPos.x = frontPos.x - 1
+  end
+
+  return frontPos
+end
+
+-- Macro principal
+macro(250, "Knight Spell Rotation (solo con target, sin %)", function()
+  local player = g_game.getLocalPlayer()
+
+  -- ?? DETENER SI NO HAY TARGET
+  local target = g_game.getAttackingCreature()
+  if not target then return end
+
+  -- Seguimos si hay target
+  local specs = g_map.getSpectators(player:getPosition(), false)
+  local monsters = 0
+  local players = 0
+  local hasFront = false
+  local pos = player:getPosition()
+  local frontPos = getFrontPos(player)
+
+  for i, spec in ipairs(specs) do
+    local specPos = spec:getPosition()
+
+    if specPos.z == pos.z then
+      if spec:isMonster() then
+        local dist = getDistanceBetween(pos, specPos)
+        if dist <= 1 then
+          monsters = monsters + 1
+        end
+        if specPos.x == frontPos.x and specPos.y == frontPos.y then
+          hasFront = true
+        end
+      elseif spec:isPlayer() and spec ~= player then
+        local dist = getDistanceBetween(pos, specPos)
+        if dist <= 5 then
+          players = players + 1
+        end
+      end
+    end
+  end
+
+  -- Sin jugadores cerca
+  if players == 0 then
+    if canCast("exori gran ico") then
+      cast("exori gran ico")
+      return
+    end
+    if canCast("exori min") and hasFront then
+      cast("exori min")
+      return
+    end
+    if canCast("exori") and monsters >= 2 then
+      cast("exori")
+      return
+    end
+  else
+    -- Con jugadores cerca
+    if canCast("exori gran ico") then
+      cast("exori gran ico")
+      return
+    end
+    if canCast("exori ico") then
+      cast("exori ico")
+      return
+    end
+    if canCast("exori hur") then
+      cast("exori hur")
+      return
+    end
+  end
+end)
+
+
+
+setDefaultTab("Tools")
+macro(1000,"Auto Aceptar Party",function() 
+  if player:getShield() > 2 then return end -- already in a party
+  for s, spec in pairs(getSpectators(false)) do
+    if spec:getShield() == 1 then
+      g_game.partyJoin(spec:getId())
+      delay(1000)
+    end
+  end
+end)
+
+macro(1000, "Auto Share Exp", function()
+    --Made By VivoDibra
+  if player:isPartyMember() and player:isPartyLeader() and not player:isPartySharedExperienceActive() and isInPz() then
+    g_game.partyShareExperience(true) 
+  end
+end)
+
+macro(25, "Utito Tempo", function() if manapercent() > 30 then say("Utito Tempo") delay(15000) end end)
+macro(25, "Utamo Tempo", function() if manapercent() > 30 then say("Utamo tempo") delay(15000) end end)
+macro(25, "Invocar Familiar", function() if manapercent() > 30 then say("utevo gran res eq") delay(900000) end end)
+
+macro(200, "Exeta Res", function()
+    if g_game.isAttacking() and 
+    distanceFromPlayer(g_game.getAttackingCreature():getPosition()) <= 1 and 
+    manapercent() > 30 then
+        
+        say("Exeta Res")
+        delay(5000)
+    end
+end)
+
+macro(200, "Exeta Amp Res", function()
+    if g_game.isAttacking() and 
+    distanceFromPlayer(g_game.getAttackingCreature():getPosition()) <= 1 and 
+    manapercent() > 30 then
+        
+        say("Exeta Amp Res")
+        delay(5000)
+    end
+end)
+
+macro(200, "Utura", function()
+    say("Utura")
+    delay(60000)
+end)
+
+macro(200, "Utura Gran", function()
+    say("Utura Gran")
+    delay(60000)
+end)
+
+local stName = "AutoEquipV2"
+
+-- Configuración por defecto mejorada
+local defaultConfig = {
+    enabled = false,
+    sPanels = 6,
+    sHeight = 610,
+    sIcon = true,
+    sIPX = 200,
+    sIPY = 270,
+    sTab = "Main",
+    sHotkey = "End",
+    sPz = true,
+    sOldVersion = g_game.getClientVersion() < 800,
+    items = {}
+}
+
+-- Inicialización de configuración mejorada
+if not storage[stName] or type(storage[stName]) ~= "table" then
+    storage[stName] = defaultConfig
+end
+
+local config = storage[stName]
+setDefaultTab(config.sTab)
+
+-- Constantes
+local EQUIP_DELAY = 500
+local MACRO_DELAY = 50
+local SLOTS = {
+    "Helmet", "Necklace", "Backpack", "Armor", "Right Hand", "Left Hand",
+    "Legs", "Boots", "Ring", "Ammunition"
+}
+
+-- UI mejorado
+local ui = setupUI([[
+Panel
+  height: 19
+
+  BotSwitch
+    id: main
+    anchors.top: parent.top
+    anchors.left: parent.left
+    text-align: center
+    width: 130
+    !text: tr('Auto Equipper')
+    font: verdana-11px-rounded
+
+  Button
+    id: edit
+    anchors.top: prev.top
+    anchors.left: prev.right
+    anchors.right: parent.right
+    margin-left: 3
+    height: 17
+    text: Setup
+    font: verdana-11px-rounded
+]])
+
+UI.Label("Hotkey: "..config.sHotkey):setFont('verdana-11px-rounded')
+
+-- Carga de UI desde strings
+g_ui.loadUIFromString([[
+AE_MainWindow < MainWindow
+  !text: tr('Auto Equipper HP/MP %% - By F.Almeida')
+  size: 400 350
+  @onEscape: self:hide()
+
+  VerticalScrollBar
+    id: contentScroll
+    anchors.top: parent.top
+    margin-top: 3
+    anchors.right: parent.right
+    anchors.bottom: separator.top
+    step: 28
+    pixels-scroll: true
+    margin-right: -10
+    margin-top: 5
+    margin-bottom: 5
+
+  ScrollablePanel
+    id: content
+    anchors.top: prev.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: separator.top
+    vertical-scrollbar: contentScroll
+    margin-bottom: 10
+    
+    Panel
+      id: left
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.horizontalCenter
+      margin-top: 5
+      margin-left: 10
+      margin-right: 10
+      layout:
+        type: verticalBox
+        fit-children: true
+
+    Panel
+      id: right
+      anchors.top: parent.top
+      anchors.right: parent.right
+      anchors.left: parent.horizontalCenter
+      margin-top: 5
+      margin-left: 10
+      margin-right: 10
+      layout:
+        type: verticalBox
+        fit-children: true
+
+    VerticalSeparator
+      anchors.top: parent.top
+      anchors.bottom: prev.bottom
+      anchors.left: parent.horizontalCenter
+
+  HorizontalSeparator
+    id: separator
+    anchors.right: parent.right
+    anchors.left: parent.left
+    anchors.bottom: closeButton.top
+    margin-bottom: 8    
+
+  Button
+    id: closeButton
+    !text: tr('Close')
+    font: cipsoftFont
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    size: 45 21
+    margin-top: 15
+    margin-right: 5
+    font: verdana-11px-rounded
+    
+  Button
+    id: info
+    text: Credits
+    font: cipsoftFont
+    anchors.left: parent.left
+    anchors.bottom: parent.bottom
+    size: 50 21
+    color: yellow
+    font: verdana-11px-rounded
+    !tooltip: tr('Created by F.Almeida#8019\nClick to contribute.')
+    @onClick: g_platform.openUrl("https://www.paypal.com/donate/?business=8XSU4KTS2V9PN&no_recurring=0&item_name=OTC+AND+OTS+SCRIPTS&currency_code=USD")    
+
+  Button
+    id: settings
+    !text: tr('Settings')
+    anchors.left: info.right
+    margin-left: 5 
+    size: 65 21
+    font: verdana-11px-rounded  
+    anchors.verticalCenter: info.verticalCenter
+
+  BotSwitch
+    id: sPz
+    !text: tr('Stop In PZ')
+    anchors.left: settings.right
+    margin-left: 5 
+    size: 70 20
+    font: verdana-11px-rounded  
+    anchors.top: settings.top 
+    margin-top: 1
+
+DualScroll < Panel
+  height: 29
+  margin-top: 3
+    
+  Label
+    id: title
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    text-align: center
+    
+  HorizontalScrollBar
+    id: scroll1
+    anchors.left: title.left
+    anchors.right: title.horizontalCenter
+    anchors.top: title.bottom
+    margin-right: 2
+    margin-top: 2
+    minimum: 0
+    maximum: 100
+    step: 1
+    &disableScroll: true
+    
+  HorizontalScrollBar
+    id: scroll2
+    anchors.left: title.horizontalCenter
+    anchors.right: title.right
+    anchors.top: prev.top
+    margin-left: 2
+    minimum: 0
+    maximum: 100
+    step: 1
+    &disableScroll: true
+
+TwoItems < Panel
+  height: 35
+  margin-top: 4
+      
+  BotItem
+    id: item1
+    anchors.left: parent.left
+    anchors.top: parent.top
+    margin-top: 1
+
+  BotItem
+    id: item2
+    anchors.left: prev.right
+    anchors.top: prev.top
+    margin-left: 1
+    
+  SmallBotSwitch
+    id: title
+    anchors.left: prev.right
+    anchors.top: prev.top
+    text-align: center
+    width: 45
+    margin-left: 2
+    margin-top: 0
+    tooltip: equip this item if under these conditions
+
+  SmallBotSwitch
+    id: title2
+    anchors.left: prev.right
+    anchors.right: parent.right
+    anchors.top: prev.top
+    text-align: center
+    width: 55
+    margin-left: 2
+    margin-top: 0
+    tooltip: unequip this item if out of these conditions
+
+  SlotComboBox
+    id: slot
+    anchors.left: item2.right
+    anchors.right: prev.right
+    anchors.top: prev.bottom
+    anchors.bottom: item2.bottom
+    margin-top: 2
+    margin-bottom: 1
+    margin-left: 2
+    &disableScroll: true
+]])
+
+-- Settings Window (FALTABA ESTA PARTE)
+g_ui.loadUIFromString([[
+AES_CheckBox < CheckBox
+  anchors.left: parent.left
+  anchors.right: parent.right
+  anchors.top: prev.bottom
+  margin-top: 6
+
+AES_Sep < HorizontalSeparator
+  anchors.right: parent.right
+  anchors.left: parent.left
+  anchors.top: prev.bottom
+  margin-top: 6
+
+AE_SettingsWindow < MainWindow
+  text: Auto Equipper Settings
+  size: 230 320
+  @onEscape: self:hide()
+
+  Label
+    !text: tr('Any changes made here require the bot to be restarted in order to take effect.')
+    text-align: center
+    text-wrap: true
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    height: 40
+
+  AES_Sep    
+
+  AES_CheckBox
+    id: sIcon
+    text: Create Icon / Icon Position:
+
+  Label
+    anchors.left: prev.left
+    anchors.top: prev.bottom
+    text-align: center
+    margin-top: 5
+    width: 40
+    height: 20
+    !text: ('Pos X: ')
+
+  SpinBox
+    id: sIPX
+    anchors.left: prev.right
+    anchors.top: prev.top
+    anchors.bottom: prev.bottom
+    minimum: 0
+    maximum: 2000
+    width: 50
+    step: 10
+
+  Label
+    anchors.right: sIPY.left
+    anchors.top: prev.top
+    anchors.bottom: prev.bottom
+    text-align: center
+    width: 40
+    !text: ('Pos Y: ')
+
+  SpinBox
+    id: sIPY
+    anchors.right: parent.right
+    anchors.top: sIPX.top
+    anchors.bottom: sIPX.bottom
+    minimum: 0
+    maximum: 2000
+    width: 50
+    step: 10
+
+  AES_Sep
+
+  Label
+    anchors.left: parent.left
+    anchors.top: prev.bottom
+    margin-top: 5
+    height: 20
+    text-align: center
+    text: How Many Items Panels:
+
+  SpinBox
+    id: sPanels
+    anchors.right: parent.right
+    anchors.top: prev.top
+    anchors.bottom: prev.bottom
+    minimum: 2
+    maximum: 20
+    width: 50
+    step: 2
+    text-align: center
+
+  AES_Sep
+
+  Label
+    anchors.left: parent.left
+    anchors.top: prev.bottom
+    margin-top: 5
+    height: 20
+    text-align: center
+    text: Window Max Height:
+
+  SpinBox
+    id: sHeight
+    anchors.right: parent.right
+    anchors.top: prev.top
+    anchors.bottom: prev.bottom
+    minimum: 300
+    maximum: 610
+    step: 10
+    width: 50
+    text-align: center  
+
+  AES_Sep
+
+  Label
+    anchors.left: parent.left
+    anchors.top: prev.bottom
+    margin-top: 5
+    height: 20
+    text-align: center
+    text: Set Default Tab:
+
+  BotTextEdit
+    id: sTab
+    width: 100
+    anchors.right: parent.right
+    anchors.top: prev.top
+    anchors.bottom: prev.bottom
+    editable: true
+    focusable: true
+    text-align: center
+
+  AES_Sep
+
+  Label
+    anchors.left: parent.left
+    anchors.top: prev.bottom
+    margin-top: 5
+    height: 20
+    text-align: center
+    text: Toggle Hotkey:
+
+  BotTextEdit
+    id: sHotkey
+    width: 100
+    anchors.right: parent.right
+    anchors.top: prev.top
+    anchors.bottom: prev.bottom
+    editable: true
+    focusable: true
+    text-align: center  
+
+  AES_Sep
+
+  AES_CheckBox
+    id: sOldVersion
+    text: Old Tibia (No Hotkeys)
+    tooltip: Check it if you cannot equip items using hotkey, note: if checked, items must be visible
+    
+  AES_Sep
+
+  Button
+    id: closeButton
+    text: Close
+    font: verdana-11px-rounded
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    size: 55 21
+]])
+
+-- Funciones de utilidad
+local function broadcastStatus()
+    broadcastMessage(config.enabled and "Auto-Equipper: ON" or "Auto-Equipper: OFF")
+end
+
+local function findAvailableContainer()
+    for i, container in ipairs(g_game.getContainers()) do
+        local cname = container:getName():lower()
+        if container:getCapacity() > #container:getItems() and 
+           not cname:find("dead") and not cname:find("slain") and 
+           not cname:find("depot") and not cname:find("quiver") then
+            return container
+        end
+    end
+    return nil
+end
+
+local function unequipItem(slot)
+    local item = getSlot(slot)
+    if not item then return false end
+    
+    if not config.sOldVersion then
+        return g_game.equipItemId(item:getId())
+    else
+        local dest = findAvailableContainer()
+        if not dest then
+            warn("[AutoEquipper] Open Backpack.")
+            return false
+        end
+        local pos = dest:getSlotPosition(dest:getCapacity())
+        return g_game.move(item, pos, item:getCount())
+    end
+end
+
+local function equipItem(itemId, slot)
+    if not config.sOldVersion then
+        return g_game.equipItemId(itemId)
+    else
+        local item = findItem(itemId)
+        if item then
+            return g_game.move(item, {x=65535, y=slot, z=0}, item:getCount())
+        end
+        return false
+    end
+end
+
+local function shouldEquip(entry, hp, mp)
+    return hp >= entry.HP.min and hp <= entry.HP.max and 
+           mp >= entry.MP.min and mp <= entry.MP.max
+end
+
+local function isItemEquipped(entry)
+    local slotItem = getSlot(entry.slot)
+    return slotItem and (slotItem:getId() == entry.item1 or slotItem:getId() == entry.item2)
+end
+
+-- Switch principal
+ui.main:setOn(config.enabled)
+ui.main.onClick = function(widget)
+    config.enabled = not config.enabled
+    broadcastStatus()
+    widget:setOn(config.enabled)
+end
+
+-- Sistema de icono mejorado
+local icon = nil
+if config.sIcon then
+    icon = addIcon("AutoEquipV2", {
+        item = 3088, 
+        text = "Auto\nEquip", 
+        hotkey = config.sHotkey, 
+        switchable = false
+    }, function(widget, isOn)
+        ui.main.onClick(ui.main)
+    end)
+    
+    icon:setSize({height = 60, width = 40})
+    icon:breakAnchors()
+    icon:move(config.sIPX, config.sIPY)
+    icon.hotkey:setText('')
+    icon.text:setFont('verdana-11px-rounded')
+    
+    -- Macro para actualizar estado del icono
+    macro(MACRO_DELAY, function()
+        if icon and icon.text then
+            icon.text:setColor(config.enabled and "green" or "red")
+            icon.item:setItemId(config.enabled and 3089 or 3100)
+        end
+    end)
+else
+    hotkey(config.sHotkey, function() 
+        ui.main.onClick(ui.main)
+    end)
+end
+
+-- Inicialización de ventanas
+local rootWidget = g_ui.getRootWidget()
+if rootWidget then
+    -- Ventana principal
+    local AE_MainWindow = UI.createWindow('AE_MainWindow', rootWidget)
+    AE_MainWindow:hide()
+    
+    -- Ventana de Settings (FALTABA ESTA INICIALIZACIÓN)
+    local AE_SettingsWindow = UI.createWindow('AE_SettingsWindow', rootWidget)
+    AE_SettingsWindow:hide()
+    
+    -- Configuración de botones de cierre
+    AE_MainWindow.closeButton.onClick = function()
+        AE_MainWindow:hide()
+    end
+    
+    AE_SettingsWindow.closeButton.onClick = function()
+        AE_SettingsWindow:hide()
+    end
+    
+    -- Botón de settings en MainWindow
+    AE_MainWindow.settings.onClick = function()
+        AE_SettingsWindow:show()
+        AE_SettingsWindow:raise()
+        AE_SettingsWindow:focus()
+    end
+
+    -- Configuración de Settings Window (FALTABA ESTA PARTE)
+    AE_SettingsWindow.sIcon:setChecked(config.sIcon)
+    AE_SettingsWindow.sIcon.onClick = function(widget)
+        config.sIcon = not config.sIcon
+        widget:setChecked(config.sIcon)
+    end
+    
+    AE_SettingsWindow.sOldVersion:setChecked(config.sOldVersion)
+    AE_SettingsWindow.sOldVersion.onClick = function(widget)
+        config.sOldVersion = not config.sOldVersion
+        widget:setChecked(config.sOldVersion)
+    end
+    
+    AE_SettingsWindow.sIPX:setValue(config.sIPX)
+    AE_SettingsWindow.sIPX.onValueChange = function(widget, value)
+        config.sIPX = value
+    end
+    
+    AE_SettingsWindow.sIPY:setValue(config.sIPY)
+    AE_SettingsWindow.sIPY.onValueChange = function(widget, value)
+        config.sIPY = value
+    end
+    
+    AE_SettingsWindow.sPanels:setValue(config.sPanels)
+    AE_SettingsWindow.sPanels.onValueChange = function(widget, value)
+        config.sPanels = value
+    end
+    
+    AE_SettingsWindow.sHeight:setValue(config.sHeight)
+    AE_SettingsWindow.sHeight.onValueChange = function(widget, value)
+        config.sHeight = value
+    end
+    
+    AE_SettingsWindow.sTab:setText(config.sTab)
+    AE_SettingsWindow.sTab.onTextChange = function(widget, text)
+        config.sTab = text
+    end
+    
+    AE_SettingsWindow.sHotkey:setText(config.sHotkey)
+    AE_SettingsWindow.sHotkey.onTextChange = function(widget, text)
+        config.sHotkey = text
+    end
+
+    -- Switch PZ mejorado
+    AE_MainWindow.sPz:setOn(config.sPz)
+    AE_MainWindow.sPz.onClick = function(widget)
+        config.sPz = not config.sPz
+        widget:setOn(config.sPz)
+    end
+
+    -- Botón de edición
+    ui.edit.onClick = function()
+        AE_MainWindow:show()
+        AE_MainWindow:raise()
+        AE_MainWindow:focus()
+    end
+
+    -- UI Components mejorados
+    UI.DualScroll = function(params, callback, parent)
+        params.title = params.title or "title"
+        params.min = params.min or 20
+        params.max = params.max or 80
+        
+        local widget = UI.createWidget('DualScroll', parent)
+        
+        local update = function(dontSignal)
+            widget.title:setText(string.format("%d%% <= %s <= %d%%", params.min, params.title, params.max))
+            if callback and not dontSignal then
+                callback(widget, params)
+            end
+        end
+        
+        widget.scroll1:setValue(params.min)
+        widget.scroll2:setValue(params.max)
+
+        widget.scroll1.onValueChange = function(scroll, value)
+            if value <= params.max then
+                params.min = value
+                update()
+            end
+        end
+        
+        widget.scroll2.onValueChange = function(scroll, value)
+            if value >= params.min then
+                params.max = value
+                update()
+            end
+        end
+        
+        update(true)
+        return widget
+    end
+
+    UI.TwoItems = function(params, callback, parent)
+        params.title = params.title or "Equip"
+        params.title2 = params.title2 or "Unequip"
+        params.item1 = params.item1 or 0
+        params.item2 = params.item2 or 0
+        params.slot = params.slot or 1
+        
+        local widget = UI.createWidget("TwoItems", parent)
+        
+        -- Configuración de controles
+        widget.title:setText(params.title)
+        widget.title:setOn(params.on)
+        widget.title.onClick = function()
+            params.on = not params.on
+            widget.title:setOn(params.on)
+            if callback then
+                callback(widget, params)
+            end
+        end
+
+        widget.title2:setText(params.title2)
+        widget.title2:setOn(params.unequip)
+        widget.title2.onClick = function()
+            params.unequip = not params.unequip
+            widget.title2:setOn(params.unequip)
+            if callback then
+                callback(widget, params)
+            end
+        end
+        
+        widget.slot:setCurrentIndex(params.slot)
+        widget.slot.onOptionChange = function()
+            params.slot = widget.slot.currentIndex
+            if callback then
+                callback(widget, params)
+            end
+        end
+        
+        widget.item1:setItemId(params.item1)
+        widget.item1.onItemChange = function()
+            params.item1 = widget.item1:getItemId()
+            if callback then
+                callback(widget, params)
+            end
+        end
+
+        widget.item2:setItemId(params.item2)
+        widget.item2.onItemChange = function()
+            params.item2 = widget.item2:getItemId()
+            if callback then
+                callback(widget, params)
+            end
+        end 
+        
+        return widget
+    end
+
+    -- Creación dinámica de paneles mejorada
+    local maxH = (math.ceil(config.sPanels / 2) * 133) + 87
+    AE_MainWindow:setHeight(math.min(maxH, config.sHeight))
+
+    for i = 1, config.sPanels do
+        local destUi = i % 2 == 0 and AE_MainWindow.content.right or AE_MainWindow.content.left
+        
+        if not config.items[i] then
+            config.items[i] = {
+                on = i == 1,
+                title = "Equip", 
+                item1 = i == 1 and 3052 or 0, 
+                item2 = i == 1 and 3089 or 0, 
+                slot = 1,
+                unequip = i == 1,
+                title2 = "Unequip",
+                HP = {title = "HP%", min = 0, max = 100},
+                MP = {title = "MP%", min = 0, max = i == 1 and 90 or 100},
+            }
+        end
+
+        UI.Label("Item "..i, destUi)
+        UI.TwoItems(config.items[i], function(widget, newParams)
+            config.items[i] = newParams
+        end, destUi)
+        
+        UI.DualScroll(config.items[i].HP, function(widget, newParams) 
+            config.items[i].HP = newParams
+        end, destUi)
+        
+        UI.DualScroll(config.items[i].MP, function(widget, newParams) 
+            config.items[i].MP = newParams
+        end, destUi)
+        
+        UI.Separator(destUi)
+    end
+end
+
+-- Loop principal mejorado
+macro(MACRO_DELAY, function()
+    if not config.enabled then return end
+    
+    local hp = player:getHealthPercent()
+    local mp = math.min(100, math.floor(100 * (player:getMana() / player:getMaxMana())))
+    
+    for i, entry in ipairs(config.items) do
+        if entry.on then
+            local isEquipped = isItemEquipped(entry)
+            
+            if config.sPz and isInPz() then
+                if isEquipped then
+                    unequipItem(entry.slot)
+                    return delay(EQUIP_DELAY)
+                end
+            elseif shouldEquip(entry, hp, mp) then
+                if not isEquipped then
+                    if equipItem(entry.item1, entry.slot) then
+                        return delay(EQUIP_DELAY)
+                    end
+                end
+            elseif entry.unequip and isEquipped then
+                unequipItem(entry.slot)
+                return delay(EQUIP_DELAY)
+            end
+        end
+    end
+end)
+
+
+
+local items = { 3031, 3035, 3492, 3043, 3725, 3043 }
+macro(50, "Fast Pick Items", function()
+    --Made By VivoDibra
+  local tiles = getNearTiles(pos())
+  table.insert(tiles, g_map.getTile(pos()))
+  for _, t in ipairs(tiles) do
+    local i = t:getTopThing()
+    if i and table.find(items, i:getId()) then
+      moveToSlot(i, SlotBack, i:getCount())
+    end
+  end
+end)
+
+--Open and closed IDs (add more if needed)
+local doorsIds = { 5007, 8265, 1629, 1632, 5129, 6252, 6249, 7715, 7712, 7714, 
+7719, 6256, 1669, 1672, 5125, 5115, 5124, 17701, 17710, 1642, 
+6260, 5107, 4912, 6251, 5291, 1683, 1696, 1692, 5006, 2179, 5116, 
+1632, 11705, 30772, 30774, 6248, 5735, 5732, 5120, 23873, 5736,
+6264, 5122, 30049, 30042, 7727, 9352, 9355, 1633, 5108 }
+
+hotkey("b", "Open/Close Doors", function()
+    --Join Discord server for free scripts
+    --https://discord.gg/RkQ9nyPMBH
+    local nearTiles = getNearTiles(pos())
+    table.insert(nearTiles, g_map.getTile(pos()))
+    for _, t in ipairs(nearTiles) do
+        local d = t:getTopUseThing()
+        if table.find(doorsIds, d:getId()) then
+            return g_game.use(d)
+        end
+    end
+end)
+
+
+UI.Separator()
+macro(1000, "Stack items", function()
+  local containers = g_game.getContainers()
+  local toStack = {}
+  for index, container in pairs(containers) do
+    if not container.lootContainer then -- ignore monster containers
+      for i, item in ipairs(container:getItems()) do
+        if item:isStackable() and item:getCount() < 100 then
+          local stackWith = toStack[item:getId()]
+          if stackWith then
+            g_game.move(item, stackWith[1], math.min(stackWith[2], item:getCount()))
+            return
+          end
+          toStack[item:getId()] = {container:getSlotPosition(i - 1), 100 - item:getCount()}
+        end
+      end
+    end
+  end
+end)
+
+
+
+
+
+addSeparator()
+
+setDefaultTab("Main")
+
+local panelName = "Dummy Train"
+local ui = setupUI([[
+Panel
+  height: 30
+
+  BotItem
+    id: item
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  BotItem
+    id: Target
+    anchors.top: parent.top
+    anchors.right: parent.right
+    margin-left: 2
+
+  BotSwitch
+    id: title
+    anchors.top: Target.top
+    anchors.left: item.right
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    text-align: center
+    !text: tr('Dummy Train')
+    margin-top: 4
+    margin-left: 6
+    margin-right: 40
+
+]], parent)
+ui:setId(panelName)
+
+if not storage[panelName] then
+  storage[panelName] = {
+      id = 28557,
+      id2 = 28559,
+      title = enabled,
+      enabled = false,
+  }
+end
+
+ui.title:setOn(storage[panelName].enabled)
+ui.title.onClick = function(widget)
+  storage[panelName].enabled = not storage[panelName].enabled
+  widget:setOn(storage[panelName].enabled)
+end
+
+ui.item.onItemChange = function(widget)
+  storage[panelName].id = widget:getItemId()
+end
+ui.item:setItemId(storage[panelName].id)
+
+ui.Target.onItemChange = function(widget)
+  storage[panelName].id2 = widget:getItemId()
+end
+ui.Target:setItemId(storage[panelName].id2)
+
+function setDummyOff()
+  storage[panelName].enabled = false
+  ui.title:setOn(false)
+end
+
+function setDummyOn()
+  storage[panelName].enabled = true
+  ui.title:setOn(true)
+end
+
+local istraining = false
+
+dummytrain = macro(2000, function()
+if istraining == true then return true end
+if not storage[panelName].enabled then return end
+  for _, tile in ipairs(g_map.getTiles(posz())) do
+    if getDistanceBetween(pos(), tile:getPosition()) <= 7 then
+    local item = tile:getTopUseThing()
+    local exercise = findItem(storage[panelName].id)
+      if exercise and item and item:getId() == storage[panelName].id2 then
+        useWith(storage[panelName].id, item)
+          
+      end
+    end
+  end
+end)
+
+onTextMessage(function(mode, text)
+if not dummytrain then return true end
+  if mode == 18 then
+    if text:lower():find("you started training.") then
+      istraining = true
+    end
+  elseif mode == 17 then
+    if text:lower():find("you are already training.") then
+      istraining = true
+    end
+  end
+end)
+
+onTextMessage(function(mode, text)
+if not dummytrain then return true end
+  if mode == 18 then
+    if text:lower():find("you stopped exercising because you changed your position.") or text:lower():find("your training session has stopped because your weapon charges are gone.") then
+      istraining = false
+    end
+  end
+end)
+
+
+addSeparator()
